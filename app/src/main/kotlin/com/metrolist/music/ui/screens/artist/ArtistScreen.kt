@@ -76,6 +76,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import kotlinx.coroutines.flow.firstOrNull
+import com.metrolist.music.db.entities.PlaylistEntity
+import com.metrolist.music.db.entities.PlaylistSongMap
+import com.metrolist.music.db.entities.SongEntity
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
 import com.metrolist.innertube.YouTube
@@ -130,6 +134,13 @@ import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+
+
+object ArtistRadioCache {
+    val playlists = mutableMapOf<String, List<SongItem>>()
+    val names = mutableMapOf<String, String>()
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ArtistScreen(
@@ -153,7 +164,6 @@ fun ArtistScreen(
     val isChannelSubscribed by viewModel.isChannelSubscribed.collectAsStateWithLifecycle()
     val hideExplicit by rememberPreference(key = HideExplicitKey, defaultValue = false)
     val showArtistDescription by rememberPreference(key = ShowArtistDescriptionKey, defaultValue = true)
-    val showArtistSubscriberCount by rememberPreference(key = ShowArtistSubscriberCountKey, defaultValue = true)
     val showMonthlyListeners by rememberPreference(key = ShowMonthlyListenersKey, defaultValue = true)
 
     val lazyListState = rememberLazyListState()
@@ -178,6 +188,38 @@ fun ArtistScreen(
         artistPage?.sections?.map { section ->
             section.items.distinctBy { it.id }
         } ?: emptyList()
+    }
+
+    val aboutArtistContent: @Composable () -> Unit = {
+        val description = artistPage?.description
+        val descriptionRuns = artistPage?.descriptionRuns
+        if (showArtistDescription && (!description.isNullOrEmpty() || !descriptionRuns.isNullOrEmpty())) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 16.dp, bottom = 16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.about_artist),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                ExpandableText(
+                    text = description.orEmpty(),
+                    runs =
+                        descriptionRuns?.map {
+                            LinkSegment(
+                                text = it.text,
+                                url = it.navigationEndpoint?.urlEndpoint?.url,
+                            )
+                        },
+                    collapsedMaxLines = 3,
+                )
+            }
+        }
     }
 
     LaunchedEffect(libraryArtist) {
@@ -342,16 +384,33 @@ fun ArtistScreen(
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp),
                             ) {
-                                // Artist Name
-                                Text(
-                                    text = artistName ?: "Unknown",
-                                    style = MaterialTheme.typography.headlineLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontSize = 32.sp,
+                                // Artist Name + monthly listeners
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier.padding(bottom = 16.dp),
-                                )
+                                ) {
+                                    Text(
+                                        text = artistName ?: "Unknown",
+                                        style = MaterialTheme.typography.headlineLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 32.sp,
+                                        modifier = Modifier.weight(1f, fill = false),
+                                    )
+                                    if (showMonthlyListeners) {
+                                        artistPage?.monthlyListenerCount?.let { listeners ->
+                                            Text(
+                                                text = listeners,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                            )
+                                        }
+                                    }
+                                }
 
                                 // Buttons Row
                                 Row(
@@ -388,27 +447,81 @@ fun ArtistScreen(
                                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
-                                        // Radio Button
+                                        // Radio Button (Custom Generated Playlist)
                                         if (!showLocal && !isGuest) {
-                                            artistPage?.artist?.radioEndpoint?.let { radioEndpoint ->
-                                                OutlinedButton(
-                                                    onClick = {
-                                                        playerConnection.playQueue(YouTubeQueue(radioEndpoint))
-                                                    },
-                                                    shape = RoundedCornerShape(50),
-                                                    modifier = Modifier.height(40.dp),
-                                                ) {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.radio),
-                                                        contentDescription = null,
-                                                        modifier = Modifier.size(20.dp),
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = stringResource(R.string.radio),
-                                                        fontSize = 14.sp,
-                                                    )
-                                                }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                                        val artistId = viewModel.artistId
+                                                        val radioId = "RADIO_$artistId"
+
+                                                        // 1. Check if this Radio playlist already exists
+                                                        val existingPlaylist = database.playlist(radioId).firstOrNull()
+
+                                                        if (existingPlaylist == null) {
+                                                            // 2. Fetch the stable song list (up to 50)
+                                                            val songSection = artistPage?.sections?.find { section ->
+                                                                (section.items.firstOrNull() as? SongItem)?.album != null
+                                                            }
+                                                            var radioSongs = songSection?.items?.filterIsInstance<SongItem>()?.distinctBy { it.id } ?: emptyList()
+
+                                                            val moreEndpoint = songSection?.moreEndpoint
+                                                            if (moreEndpoint != null && radioSongs.size < 50) {
+                                                                val result = com.metrolist.innertube.YouTube.artistItems(moreEndpoint).getOrNull()
+                                                                if (result != null) {
+                                                                    val moreSongs = result.items.filterIsInstance<SongItem>().distinctBy { it.id }
+                                                                    radioSongs = (radioSongs + moreSongs).distinctBy { it.id }
+                                                                }
+                                                            }
+                                                            radioSongs = radioSongs.take(50)
+
+                                                            if (radioSongs.isNotEmpty()) {
+                                                                val artistBanner = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
+                                                                val artistName = artistPage?.artist?.title ?: libraryArtist?.artist?.name ?: "Artist"
+
+                                                                // 3. Create the "Hidden" Playlist
+                                                                val newPlaylist = PlaylistEntity(
+                                                                    id = radioId,
+                                                                    name = "$artistName Radio",
+                                                                    thumbnailUrl = artistBanner, // Forces the banner cover!
+                                                                    bookmarkedAt = null,         // NULL = Hidden from Library until liked
+                                                                    isLocal = true,
+                                                                    isEditable = false
+                                                                )
+
+                                                                database.transaction {
+                                                                    insert(newPlaylist)
+                                                                    radioSongs.forEachIndexed { index, song ->
+                                                                        val meta = song.toMediaMetadata().copy(
+                                                                            thumbnailUrl = song.thumbnail?.resize(1200, 1200) ?: song.thumbnail,
+                                                                            explicit = song.explicit,
+                                                                        )
+                                                                        insert(meta)
+                                                                        insert(PlaylistSongMap(playlistId = radioId, songId = song.id, position = index))
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+
+                                                        // 4. Navigate to the standard Playlist UI
+                                                        withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                                            navController.navigate("local_playlist/$radioId")
+                                                        }
+                                                    }
+                                                },
+                                                shape = RoundedCornerShape(50),
+                                                modifier = Modifier.height(40.dp),
+                                            ) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.radio),
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(20.dp),
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = stringResource(R.string.radio),
+                                                    fontSize = 14.sp,
+                                                )
                                             }
                                         }
 
@@ -440,81 +553,6 @@ fun ArtistScreen(
                                 }
                             }
                             Spacer(modifier = Modifier.height(16.dp))
-                        }
-                    }
-                }
-
-                // About Artist Section
-                if (!showLocal && (showArtistDescription || showArtistSubscriberCount || showMonthlyListeners)) {
-                    val description = artistPage?.description
-                    val descriptionRuns = artistPage?.descriptionRuns
-                    val subscriberCount = artistPage?.subscriberCountText
-                    val monthlyListeners = artistPage?.monthlyListenerCount
-
-                    if ((showArtistDescription && !description.isNullOrEmpty()) ||
-                        (showArtistSubscriberCount && !subscriberCount.isNullOrEmpty()) ||
-                        (showMonthlyListeners && !monthlyListeners.isNullOrEmpty())
-                    ) {
-                        item(key = "about_artist") {
-                            Column(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp)
-                                        .padding(bottom = 16.dp)
-                                        .animateItem(),
-                            ) {
-                                if (showArtistDescription && (!description.isNullOrEmpty() || !descriptionRuns.isNullOrEmpty())) {
-                                    Text(
-                                        text = stringResource(R.string.about_artist),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(bottom = 8.dp),
-                                    )
-                                }
-
-                                if (showArtistSubscriberCount && !subscriberCount.isNullOrEmpty()) {
-                                    Text(
-                                        text = subscriberCount,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(bottom = 4.dp),
-                                    )
-                                }
-
-                                if (showMonthlyListeners && !monthlyListeners.isNullOrEmpty()) {
-                                    Text(
-                                        text = monthlyListeners,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier =
-                                            Modifier.padding(
-                                                bottom =
-                                                    if (showArtistDescription &&
-                                                        !description.isNullOrEmpty()
-                                                    ) {
-                                                        8.dp
-                                                    } else {
-                                                        0.dp
-                                                    },
-                                            ),
-                                    )
-                                }
-
-                                if (showArtistDescription && (!description.isNullOrEmpty() || !descriptionRuns.isNullOrEmpty())) {
-                                    ExpandableText(
-                                        text = description.orEmpty(),
-                                        runs =
-                                            descriptionRuns?.map {
-                                                LinkSegment(
-                                                    text = it.text,
-                                                    url = it.navigationEndpoint?.urlEndpoint?.url,
-                                                )
-                                            },
-                                        collapsedMaxLines = 3,
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -657,7 +695,14 @@ fun ArtistScreen(
                         }
                     }
                 } else {
+                    val sections = artistPage?.sections.orEmpty()
+                    val similarIndex = sections.indexOfFirst { it.items.isNotEmpty() && it.items.firstOrNull() is ArtistItem }
+                    val aboutIndex = if (similarIndex != -1) similarIndex else sections.lastIndex
+
                     artistPage?.sections?.forEachIndexed { index, section ->
+                        if (index == aboutIndex && section.items.isNotEmpty()) {
+                            item(key = "about_artist") { aboutArtistContent() }
+                        }
                         if (section.items.isNotEmpty()) {
                             item(key = "section_${section.title}") {
                                 NavigationTitle(
@@ -1013,23 +1058,6 @@ fun ArtistScreen(
             ) {
                 Icon(
                     painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
-                )
-            }
-        },
-        actions = {
-            IconButton(
-                onClick = {
-                    viewModel.artistPage?.artist?.shareLink?.let { link ->
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText("Artist Link", link)
-                        clipboard.setPrimaryClip(clip)
-                        Toast.makeText(context, R.string.link_copied, Toast.LENGTH_SHORT).show()
-                    }
-                },
-            ) {
-                Icon(
-                    painterResource(R.drawable.link),
                     contentDescription = null,
                 )
             }
