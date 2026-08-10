@@ -65,6 +65,7 @@ import com.metrolist.music.ui.screens.settings.integrations.ListenTogetherSettin
 import com.metrolist.music.ui.screens.wrapped.WrappedScreen
 import com.metrolist.music.utils.rememberEnumPreference
 import com.metrolist.music.utils.rememberPreference
+import com.metrolist.music.ui.screens.artist.ArtistRadioScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 fun NavGraphBuilder.navigationBuilder(
@@ -212,6 +213,7 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistScreen(navController)
     }
 
+    // 1. THE ORIGINAL SONGS PAGE (Restored)
     composable(
         route = "artist/{artistId}/songs",
         arguments =
@@ -222,6 +224,22 @@ fun NavGraphBuilder.navigationBuilder(
             ),
     ) {
         ArtistSongsScreen(navController)
+    }
+
+    // 2. YOUR NEW RADIO PAGE (Added)
+    composable(
+        route = "artist_radio/{artistId}",
+        arguments =
+            listOf(
+                navArgument("artistId") {
+                    type = NavType.StringType
+                },
+            ),
+    ) { backStackEntry ->
+        ArtistRadioScreen(
+            navController = navController,
+            artistId = backStackEntry.arguments?.getString("artistId") ?: ""
+        )
     }
 
     composable(
