@@ -961,15 +961,20 @@ fun PlaylistListItem(
     },
     badges = badges,
     thumbnailContent = {
+        val database = LocalDatabase.current
+        val thumbs by produceState<List<String>>(initialValue = playlist.thumbnails, playlist.id) {
+            value = withContext(Dispatchers.IO) {
+                database.playlist(playlist.id).first()?.thumbnails ?: playlist.thumbnails
+            }
+        }
         PlaylistThumbnail(
-            thumbnails = playlist.thumbnails,
+            thumbnails = thumbs,
             size = ListThumbnailSize,
             placeHolder = {
                 val painter = when (playlist.playlist.name) {
                     stringResource(R.string.liked) -> R.drawable.favorite_border
                     stringResource(R.string.offline) -> R.drawable.offline
                     stringResource(R.string.cached_playlist) -> R.drawable.cached
-                    // R.drawable.backup as placeholder
                     stringResource(R.string.uploaded_playlist) -> R.drawable.backup
                     else -> if (autoPlaylist) R.drawable.trending_up else R.drawable.queue_music
                 }
@@ -1061,15 +1066,20 @@ fun PlaylistGridItem(
     badges = badges,
     thumbnailContent = {
         val width = maxWidth
+        val database = LocalDatabase.current
+        val thumbs by produceState<List<String>>(initialValue = playlist.thumbnails, playlist.id) {
+            value = withContext(Dispatchers.IO) {
+                database.playlist(playlist.id).first()?.thumbnails ?: playlist.thumbnails
+            }
+        }
         PlaylistThumbnail(
-            thumbnails = playlist.thumbnails,
+            thumbnails = thumbs,
             size = width,
             placeHolder = {
                 val painter = when (playlist.playlist.name) {
                     stringResource(R.string.liked) -> R.drawable.favorite_border
                     stringResource(R.string.offline) -> R.drawable.offline
                     stringResource(R.string.cached_playlist) -> R.drawable.cached
-                    // R.drawable.backup as placeholder
                     stringResource(R.string.uploaded_playlist) -> R.drawable.backup
                     else -> if (autoPlaylist) R.drawable.trending_up else R.drawable.queue_music
                 }
@@ -1647,10 +1657,10 @@ fun PlaylistThumbnail(
     size: Dp,
     placeHolder: @Composable () -> Unit,
     shape: Shape,
-    cacheKey: String? = null
+    cacheKey: String? = null,
 ) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
-    
+
     when (thumbnails.size) {
         0 -> Box(
             contentAlignment = Alignment.Center,
@@ -1663,14 +1673,13 @@ fun PlaylistThumbnail(
         }
         1 -> AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
-                .data(thumbnails[0].resize((size.value * 3).toInt()))
-                .apply { /* Removed cache key extensions due to unresolved in env */ }
+                .data(thumbnails[0])
                 .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .networkCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .build(),
             contentDescription = null,
-            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+            contentScale = ContentScale.Crop,
             placeholder = painterResource(R.drawable.queue_music),
             error = painterResource(R.drawable.queue_music),
             modifier = Modifier
@@ -1690,8 +1699,7 @@ fun PlaylistThumbnail(
             ).fastForEachIndexed { index, alignment ->
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(thumbnails.getOrNull(index)?.resize((size.value * 1.5).toInt()))
-                        .apply { /* Removed cache key extensions due to unresolved in env */ }
+                        .data(thumbnails.getOrNull(index))
                         .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                         .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                         .networkCachePolicy(coil3.request.CachePolicy.ENABLED)

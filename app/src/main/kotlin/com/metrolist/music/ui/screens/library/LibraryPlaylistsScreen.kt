@@ -132,12 +132,17 @@ fun LibraryPlaylistsScreen(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val normalizedQuery = remember(searchQuery) { searchQuery.normalizeForSearch() }
     val filteredPlaylists = remember(playlists, normalizedQuery) {
-        if (normalizedQuery.isBlank()) {
+        val baseList = if (normalizedQuery.isBlank()) {
             playlists
         } else {
             playlists.filter { playlist ->
                 matchesNormalizedQuery(normalizedQuery, playlist.playlist.name)
             }
+        }
+
+        // Hide Radio playlists unless they are bookmarked (saved)
+        baseList.filter {
+            it.playlist.bookmarkedAt != null || !it.playlist.id.startsWith("RADIO_")
         }
     }
 
