@@ -64,23 +64,22 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 
 /**
- * Liquid glass surface: translucent base + shine gradient + bright border.
- * Raise the alpha values = stronger "frost" = background looks more blurred.
+ * Dark liquid glass: smoky base + faint shine + subtle border.
  */
 private fun Modifier.liquidGlass(shape: Shape): Modifier = this
     .clip(shape)
-    .background(Color.White.copy(alpha = 0.95f))
+    .background(Color(0xFF17171A).copy(alpha = 0.92f))
     .background(
         Brush.verticalGradient(
             listOf(
-                Color.White.copy(alpha = 0.30f), // top shine
-                Color.White.copy(alpha = 0.15f), // fades down
+                Color.White.copy(alpha = 0.10f), // faint top shine
+                Color.White.copy(alpha = 0.02f),
             )
         )
     )
     .border(
         width = 1.dp,
-        color = Color.White.copy(alpha = 0.6f),
+        color = Color.White.copy(alpha = 0.22f),
         shape = shape
     )
 
@@ -196,8 +195,8 @@ fun AppNavigationBar(
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     // Liquid glass palette
-    val accentColor = Color(0xFFE62020)
-    val inactiveColor = Color(0xFF54545A)
+    val accentColor = Color(0xFFE62020)                  // active = Cider red
+    val inactiveColor = Color.White.copy(alpha = 0.8f)   // inactive = soft white
     val highlightColor = Color.White.copy(alpha = 0.45f)
 
     val pillHeight = 61.dp
@@ -287,7 +286,7 @@ fun AppNavigationBar(
                         }
 
                         val iconSize by animateDpAsState(
-                            targetValue = if (isSelected) 26.dp else 24.dp,
+                            targetValue = if (isSelected) 31.dp else 29.dp,
                             animationSpec = tween(250, easing = EaseOutCubic),
                             label = "iconSize"
                         )
@@ -348,7 +347,7 @@ fun AppNavigationBar(
                     contentDescription = "Recognize song",
                     tint = if (micActive) accentColor else inactiveColor,
                     modifier = Modifier
-                        .size(24.dp)
+                        .size(29.dp)
                         .align(Alignment.Center)
                 )
             }

@@ -30,7 +30,7 @@ val DefaultThemeColor = Color(0xFFED5564)
 
 @Composable
 fun MetrolistTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,
     pureBlack: Boolean = false,
     themeColor: Color = DefaultThemeColor,
     content: @Composable () -> Unit,
