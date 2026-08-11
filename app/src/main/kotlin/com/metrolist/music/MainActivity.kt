@@ -1158,6 +1158,15 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
 
+                            val onMicClick: () -> Unit =
+                                remember(navController) {
+                                    {
+                                        navController.navigate("recognition") {
+                                            launchSingleTop = true
+                                        }
+                                    }
+                                }
+
                             // Pre-calculate values for graphicsLayer to avoid reading state during composition
                             val navBarTotalHeight = bottomInset + NavigationBarHeight
 
@@ -1178,6 +1187,7 @@ class MainActivity : ComponentActivity() {
                                         pureBlack = pureBlack,
                                         slimNav = slimNav,
                                         onSearchLongClick = onSearchLongClick,
+                                        onMicClick = onMicClick,
                                         modifier =
                                             Modifier
                                                 .align(Alignment.BottomCenter)

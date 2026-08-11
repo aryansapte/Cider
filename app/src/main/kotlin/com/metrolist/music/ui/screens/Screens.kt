@@ -19,8 +19,8 @@ sealed class Screens(
 ) {
     object Home : Screens(
         titleId = R.string.home,
-        iconIdInactive = R.drawable.home_outlined,
-        iconIdActive = R.drawable.home_filled,
+        iconIdInactive = R.drawable.cider_home_filled,
+        iconIdActive = R.drawable.cider_home_filled,
         route = "home"
     )
 
