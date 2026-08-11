@@ -5,12 +5,10 @@
 
 package com.metrolist.music.ui.component
 
-import android.os.Build
 import androidx.compose.animation.core.EaseOutCubic
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,22 +19,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,13 +40,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.painterResource
@@ -62,26 +53,6 @@ import com.metrolist.music.R
 import com.metrolist.music.ui.screens.Screens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
-
-/**
- * Dark liquid glass: smoky base + faint shine + subtle border.
- */
-private fun Modifier.liquidGlass(shape: Shape): Modifier = this
-    .clip(shape)
-    .background(Color(0xFF17171A).copy(alpha = 0.92f))
-    .background(
-        Brush.verticalGradient(
-            listOf(
-                Color.White.copy(alpha = 0.10f), // faint top shine
-                Color.White.copy(alpha = 0.02f),
-            )
-        )
-    )
-    .border(
-        width = 1.dp,
-        color = Color.White.copy(alpha = 0.22f),
-        shape = shape
-    )
 
 @Immutable
 private data class NavItemState(
@@ -194,23 +165,14 @@ fun AppNavigationBar(
     val viewConfiguration = LocalViewConfiguration.current
     val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    // Liquid glass palette
-    val accentColor = Color(0xFFE62020)                  // active = Cider red
-    val inactiveColor = Color.White.copy(alpha = 0.8f)   // inactive = soft white
-    val highlightColor = Color.White.copy(alpha = 0.45f)
+    // Clay-look icon colors (white on black)
+    val iconActiveColor = Color.White
+    val iconInactiveColor = Color.White.copy(alpha = 0.6f)
 
-    val pillHeight = 61.dp
+    val pillHeight = 68.dp
     val horizontalPadding = 16.dp
-    val bottomPadding = 35.dp
-    // One shared shape token: rounded rectangle for bar AND mic
+    val bottomPadding = 30.dp
     val barShape = RoundedCornerShape(20.dp)
-
-    // 2.dp = soft liquid edges without melting the border
-    val edgeBlur = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        Modifier.blur(2.dp)
-    } else {
-        Modifier
-    }
 
     Box(
         modifier = modifier
@@ -227,22 +189,32 @@ fun AppNavigationBar(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // ── Main rounded-rectangle bar ──
+            // ── Main bar with clay texture ──
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .height(pillHeight)
-                    .clip(barShape) // hard clip: nothing can ever draw outside
+                    .clip(barShape) // hard clip: texture can never escape
             ) {
-                // Glass surface layer
+                // Layer 1: the texture
+                Image(
+                    painter = painterResource(id = R.drawable.clay_texture),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Layer 2: subtle dark edge
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .liquidGlass(barShape)
-                        .then(edgeBlur)
+                        .border(
+                            width = 1.dp,
+                            color = Color.Black.copy(alpha = 0.2f),
+                            shape = barShape
+                        )
                 )
 
-                // Content layer
+                // Layer 3: icons
                 Row(
                     modifier = Modifier.fillMaxSize(),
                     horizontalArrangement = Arrangement.SpaceEvenly,
@@ -285,13 +257,14 @@ fun AppNavigationBar(
                             }
                         }
 
+                        // Active tab = icon grows slightly
                         val iconSize by animateDpAsState(
                             targetValue = if (isSelected) 31.dp else 29.dp,
                             animationSpec = tween(250, easing = EaseOutCubic),
                             label = "iconSize"
                         )
 
-                        Column(
+                        Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxSize()
@@ -305,23 +278,20 @@ fun AppNavigationBar(
                                         }
                                     }
                                 ),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    painter = painterResource(id = iconRes),
-                                    contentDescription = stringResource(screen.titleId),
-                                    tint = if (isSelected) accentColor else inactiveColor,
-                                    modifier = Modifier.size(iconSize)
-                                )
-                            }
+                            Icon(
+                                painter = painterResource(id = iconRes),
+                                contentDescription = stringResource(screen.titleId),
+                                tint = if (isSelected) iconActiveColor else iconInactiveColor,
+                                modifier = Modifier.size(iconSize)
+                            )
                         }
                     }
                 }
             }
 
-            // ── Mic: rounded square, fixed size ──
+            // ── Mic bubble: rounded square with clay texture ──
             Box(
                 modifier = Modifier
                     .size(pillHeight)
@@ -335,17 +305,26 @@ fun AppNavigationBar(
                         }
                     )
             ) {
+                Image(
+                    painter = painterResource(id = R.drawable.clay_texture),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .liquidGlass(barShape)
-                        .then(edgeBlur)
+                        .border(
+                            width = 1.dp,
+                            color = Color.Black.copy(alpha = 0.2f),
+                            shape = barShape
+                        )
                 )
                 val micActive = currentRoute == "recognition"
                 Icon(
                     painter = painterResource(id = R.drawable.mic),
                     contentDescription = "Recognize song",
-                    tint = if (micActive) accentColor else inactiveColor,
+                    tint = if (micActive) iconActiveColor else iconInactiveColor,
                     modifier = Modifier
                         .size(29.dp)
                         .align(Alignment.Center)

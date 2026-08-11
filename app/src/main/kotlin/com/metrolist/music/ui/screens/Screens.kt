@@ -26,8 +26,8 @@ sealed class Screens(
 
     object Search : Screens(
         titleId = R.string.search,
-        iconIdInactive = R.drawable.search,
-        iconIdActive = R.drawable.search,
+        iconIdInactive = R.drawable.grid_view,
+        iconIdActive = R.drawable.grid_view,
         route = "search_input"
     )
 
