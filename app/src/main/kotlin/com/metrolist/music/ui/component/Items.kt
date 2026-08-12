@@ -143,6 +143,40 @@ fun currentGridThumbnailHeight(): Dp {
     return if (gridItemSize == GridItemSize.BIG) GridThumbnailHeight else SmallGridThumbnailHeight
 }
 
+@Composable
+fun rememberOfficialAlbumArt(item: YTItem): String? {
+    val database = LocalDatabase.current
+
+    val resolved by produceState<String?>(initialValue = null, item.id) {
+        if (item !is SongItem) return@produceState
+
+        // Step 1: Check local database first
+        val dbSong = database.song(item.id).firstOrNull()
+        if (dbSong?.song?.thumbnailUrl != null) {
+            value = dbSong.song.thumbnailUrl
+            return@produceState
+        }
+
+        // Step 2: If we have an album ID, fetch the full album data
+        val albumId = item.album?.id
+        if (albumId != null) {
+            val albumPage = YouTube.album(albumId, withSongs = false).getOrNull()
+            val officialThumbnail = albumPage?.album?.thumbnail
+            if (officialThumbnail != null) {
+                value = officialThumbnail
+                // Cache it for next time
+                dbSong?.let { song ->
+                    database.transaction {
+                        update(song.song.copy(thumbnailUrl = officialThumbnail))
+                    }
+                }
+            }
+        }
+    }
+
+    return resolved ?: item.thumbnail
+}
+
 @JvmName("ClickableArtistTextEntities")
 @Composable
 fun ClickableArtistText(
@@ -961,20 +995,15 @@ fun PlaylistListItem(
     },
     badges = badges,
     thumbnailContent = {
-        val database = LocalDatabase.current
-        val thumbs by produceState<List<String>>(initialValue = playlist.thumbnails, playlist.id) {
-            value = withContext(Dispatchers.IO) {
-                database.playlist(playlist.id).first()?.thumbnails ?: playlist.thumbnails
-            }
-        }
         PlaylistThumbnail(
-            thumbnails = thumbs,
+            thumbnails = playlist.thumbnails,
             size = ListThumbnailSize,
             placeHolder = {
                 val painter = when (playlist.playlist.name) {
                     stringResource(R.string.liked) -> R.drawable.favorite_border
                     stringResource(R.string.offline) -> R.drawable.offline
                     stringResource(R.string.cached_playlist) -> R.drawable.cached
+                    // R.drawable.backup as placeholder
                     stringResource(R.string.uploaded_playlist) -> R.drawable.backup
                     else -> if (autoPlaylist) R.drawable.trending_up else R.drawable.queue_music
                 }
@@ -1066,20 +1095,15 @@ fun PlaylistGridItem(
     badges = badges,
     thumbnailContent = {
         val width = maxWidth
-        val database = LocalDatabase.current
-        val thumbs by produceState<List<String>>(initialValue = playlist.thumbnails, playlist.id) {
-            value = withContext(Dispatchers.IO) {
-                database.playlist(playlist.id).first()?.thumbnails ?: playlist.thumbnails
-            }
-        }
         PlaylistThumbnail(
-            thumbnails = thumbs,
+            thumbnails = playlist.thumbnails,
             size = width,
             placeHolder = {
                 val painter = when (playlist.playlist.name) {
                     stringResource(R.string.liked) -> R.drawable.favorite_border
                     stringResource(R.string.offline) -> R.drawable.offline
                     stringResource(R.string.cached_playlist) -> R.drawable.cached
+                    // R.drawable.backup as placeholder
                     stringResource(R.string.uploaded_playlist) -> R.drawable.backup
                     else -> if (autoPlaylist) R.drawable.trending_up else R.drawable.queue_music
                 }
@@ -1657,7 +1681,7 @@ fun PlaylistThumbnail(
     size: Dp,
     placeHolder: @Composable () -> Unit,
     shape: Shape,
-    cacheKey: String? = null,
+    cacheKey: String? = null
 ) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
 
@@ -1673,13 +1697,14 @@ fun PlaylistThumbnail(
         }
         1 -> AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
-                .data(thumbnails[0])
+                .data(thumbnails[0].resize((size.value * 3).toInt()))
+                .apply { /* Removed cache key extensions due to unresolved in env */ }
                 .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .networkCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .build(),
             contentDescription = null,
-            contentScale = ContentScale.Crop,
+            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
             placeholder = painterResource(R.drawable.queue_music),
             error = painterResource(R.drawable.queue_music),
             modifier = Modifier
@@ -1699,7 +1724,8 @@ fun PlaylistThumbnail(
             ).fastForEachIndexed { index, alignment ->
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(thumbnails.getOrNull(index))
+                        .data(thumbnails.getOrNull(index)?.resize((size.value * 1.5).toInt()))
+                        .apply { /* Removed cache key extensions due to unresolved in env */ }
                         .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                         .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                         .networkCachePolicy(coil3.request.CachePolicy.ENABLED)

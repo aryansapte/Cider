@@ -6,6 +6,7 @@
 package com.metrolist.music.ui.screens.artist
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.asPaddingValues
@@ -20,18 +21,27 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -85,6 +95,10 @@ fun ArtistItemsScreen(
     val title by viewModel.title.collectAsStateWithLifecycle()
     val itemsPage by viewModel.itemsPage.collectAsStateWithLifecycle()
 
+    // ── Grid ⇄ List toggle ──
+    var isGridView by rememberSaveable { mutableStateOf(true) }
+    val firstItem = itemsPage?.items?.firstOrNull()
+
     LaunchedEffect(lazyListState) {
         snapshotFlow {
             lazyListState.layoutInfo.visibleItemsInfo.any { it.key == "loading" }
@@ -113,7 +127,7 @@ fun ArtistItemsScreen(
         }
     }
 
-    if (itemsPage?.items?.firstOrNull() is SongItem) {
+    if (firstItem is SongItem || !isGridView) {
         LazyColumn(
             state = lazyListState,
             contentPadding = LocalPlayerAwareWindowInsets.current.asPaddingValues(),
@@ -138,7 +152,7 @@ fun ArtistItemsScreen(
                                     when (item) {
                                         is SongItem -> {
                                             YouTubeSongMenu(
-                                                song = item,
+                                                song = item as SongItem,
                                                 onDismiss = menuState::dismiss,
                                             )
                                         }
@@ -375,7 +389,19 @@ fun ArtistItemsScreen(
     }
 
     TopAppBar(
-        title = { Text(title) },
+        title = {
+            Text(
+                text = title.ifEmpty {
+                    navController.currentBackStackEntry
+                        ?.arguments
+                        ?.getString("title")
+                        .orEmpty()
+                },
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
         navigationIcon = {
             IconButton(
                 onClick = navController::navigateUp,
@@ -387,5 +413,34 @@ fun ArtistItemsScreen(
                 )
             }
         },
+        actions = {
+            if (firstItem is AlbumItem) {
+                IconButton(
+                    onClick = { isGridView = !isGridView },
+                    onLongClick = { },
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            id = if (isGridView) R.drawable.list else R.drawable.grid_view,
+                        ),
+                        contentDescription = null,
+                    )
+                }
+            }
+        },
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.surface)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF8E8E93).copy(alpha = 0.35f),
+                        Color(0xFF8E8E93).copy(alpha = 0.10f),
+                    ),
+                ),
+            ),
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+        ),
     )
 }

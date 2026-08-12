@@ -133,7 +133,15 @@ import com.metrolist.music.viewmodels.ArtistViewModel
 import com.valentinilk.shimmer.shimmer
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
+import androidx.compose.ui.graphics.Brush
+import androidx.core.graphics.drawable.toBitmap
+import coil3.asDrawable
+import coil3.request.ImageRequest
+import coil3.request.SuccessResult
+import com.metrolist.music.ui.theme.extractGradientColors
+import coil3.SingletonImageLoader
+import android.graphics.Bitmap
+import androidx.compose.foundation.layout.PaddingValues
 
 
 object ArtistRadioCache {
@@ -181,6 +189,37 @@ fun ArtistScreen(
     val transparentAppBar by remember {
         derivedStateOf {
             lazyListState.firstVisibleItemIndex == 0 && lazyListState.firstVisibleItemScrollOffset < 100
+        }
+    }
+
+    // ── Banner-sourced gradient for the top bar ──
+    var appBarGradient by remember { mutableStateOf<List<Color>>(emptyList()) }
+    val bannerUrl = artistPage?.artist?.thumbnail ?: libraryArtist?.artist?.thumbnailUrl
+    val imageLoader = SingletonImageLoader.get(context)
+
+    LaunchedEffect(bannerUrl) {
+        bannerUrl?.let { url ->
+            try {
+                val request = ImageRequest.Builder(context)
+                    .data(url)
+                    .size(256)
+                    .build()
+                val result = imageLoader.execute(request)
+                if (result is SuccessResult) {
+                    val raw = result.image.asDrawable(context.resources).toBitmap()
+                    // Palette can't read HARDWARE bitmaps → force a software copy
+                    val bitmap = if (raw.config == Bitmap.Config.HARDWARE) {
+                        raw.copy(Bitmap.Config.ARGB_8888, false) ?: return@let
+                    } else {
+                        raw
+                    }
+                    appBarGradient = withContext(kotlinx.coroutines.Dispatchers.Default) {
+                        bitmap.extractGradientColors()
+                    }
+                }
+            } catch (_: Exception) {
+                // Never crash the app over decorative colors
+            }
         }
     }
 
@@ -431,13 +470,13 @@ fun ArtistScreen(
                                                         Color.Transparent
                                                     },
                                             ),
-                                        shape = RoundedCornerShape(50),
+                                        shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier.height(40.dp),
                                     ) {
                                         Text(
                                             text = stringResource(if (isChannelSubscribed) R.string.subscribed else R.string.subscribe),
                                             fontSize = 14.sp,
-                                            color = if (!isChannelSubscribed) MaterialTheme.colorScheme.error else LocalContentColor.current,
+                                            color = Color.White,
                                         )
                                     }
 
@@ -509,11 +548,11 @@ fun ArtistScreen(
                                                         }
                                                     }
                                                 },
-                                                shape = RoundedCornerShape(50),
+                                                shape = RoundedCornerShape(12.dp),
                                                 modifier = Modifier.height(40.dp),
                                             ) {
                                                 Icon(
-                                                    painter = painterResource(R.drawable.radio),
+                                                    painter = painterResource(R.drawable.gradient),
                                                     contentDescription = null,
                                                     modifier = Modifier.size(20.dp),
                                                 )
@@ -528,22 +567,21 @@ fun ArtistScreen(
                                         // Shuffle Button
                                         if (!showLocal && !isGuest) {
                                             artistPage?.artist?.shuffleEndpoint?.let { shuffleEndpoint ->
-                                                IconButton(
+                                                OutlinedButton(
                                                     onClick = {
                                                         playerConnection.playQueue(YouTubeQueue(shuffleEndpoint))
                                                     },
-                                                    modifier =
-                                                        Modifier
-                                                            .size(48.dp)
-                                                            .background(
-                                                                MaterialTheme.colorScheme.primary,
-                                                                RoundedCornerShape(24.dp),
-                                                            ),
+                                                    colors = ButtonDefaults.outlinedButtonColors(
+                                                        containerColor = Color.Transparent,
+                                                    ),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    contentPadding = PaddingValues(0.dp),
+                                                    modifier = Modifier.size(40.dp),
                                                 ) {
                                                     Icon(
                                                         painter = painterResource(R.drawable.shuffle),
                                                         contentDescription = "Shuffle",
-                                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                                        tint = Color.White,
                                                         modifier = Modifier.size(20.dp),
                                                     )
                                                 }
@@ -700,6 +738,11 @@ fun ArtistScreen(
                     val aboutIndex = if (similarIndex != -1) similarIndex else sections.lastIndex
 
                     artistPage?.sections?.forEachIndexed { index, section ->
+                        if (section.title.contains("video", ignoreCase = true) ||
+                            section.title.contains("playlist", ignoreCase = true)
+                        ) {
+                            return@forEachIndexed
+                        }
                         if (index == aboutIndex && section.items.isNotEmpty()) {
                             item(key = "about_artist") { aboutArtistContent() }
                         }
@@ -711,8 +754,9 @@ fun ArtistScreen(
                                     onClick =
                                         section.moreEndpoint?.let {
                                             {
+
                                                 navController.navigate(
-                                                    "artist/${viewModel.artistId}/items?browseId=${it.browseId}?params=${it.params}",
+                                                    "artist/${viewModel.artistId}/items?browseId=${it.browseId}?params=${it.params}&title=${android.net.Uri.encode(section.title)}",
                                                 )
                                             }
                                         },
@@ -1050,23 +1094,64 @@ fun ArtistScreen(
     }
 
     TopAppBar(
-        title = { if (!transparentAppBar) Text(artistPage?.artist?.title.orEmpty()) },
-        navigationIcon = {
-            IconButton(
-                onClick = navController::navigateUp,
-                onLongClick = navController::backToMain,
-            ) {
-                Icon(
-                    painterResource(R.drawable.arrow_back),
-                    contentDescription = null,
+        title = {
+            if (!transparentAppBar) {
+                Text(
+                    text = artistPage?.artist?.title.orEmpty(),
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         },
-        colors =
-            if (transparentAppBar) {
-                TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            } else {
-                TopAppBarDefaults.topAppBarColors()
-            },
+        navigationIcon = {
+            Box(
+                modifier = if (transparentAppBar) {
+                    // Soft dark scrim so the arrow survives white banners
+                    Modifier.background(
+                        color = Color.Black.copy(alpha = 0.35f),
+                        shape = RoundedCornerShape(12.dp),
+                    )
+                } else {
+                    Modifier
+                },
+            ) {
+                IconButton(
+                    onClick = navController::navigateUp,
+                    onLongClick = navController::backToMain,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.arrow_back),
+                        contentDescription = null,
+                    )
+                }
+            }
+        },
+        modifier = if (!transparentAppBar) {
+            Modifier
+                // solid base so content never shows through mid-scroll
+                .background(MaterialTheme.colorScheme.surface)
+                // then the banner-sourced tint on top
+                .then(
+                    if (appBarGradient.isNotEmpty()) {
+                        Modifier.background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    appBarGradient[0].copy(alpha = 0.5f),
+                                    appBarGradient.last().copy(alpha = 0.2f),
+                                ),
+                            ),
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
+        } else {
+            Modifier
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+        ),
     )
 }
