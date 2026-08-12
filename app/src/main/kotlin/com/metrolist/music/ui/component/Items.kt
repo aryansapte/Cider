@@ -134,47 +134,31 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 import kotlin.jvm.JvmName
+import timber.log.Timber
+import android.graphics.drawable.BitmapDrawable
+import coil3.compose.AsyncImagePainter
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 
 const val ActiveBoxAlpha = 0.6f
+
+object OfficialArtCache {
+    val map = mutableMapOf<String, String>()
+}
+
+private fun isDarkPixel(pixel: Int): Boolean {
+    val r = android.graphics.Color.red(pixel)
+    val g = android.graphics.Color.green(pixel)
+    val b = android.graphics.Color.blue(pixel)
+    return (r + g + b) / 3 < 40
+}
 
 @Composable
 fun currentGridThumbnailHeight(): Dp {
     val gridItemSize by rememberEnumPreference(GridItemsSizeKey, GridItemSize.BIG)
     return if (gridItemSize == GridItemSize.BIG) GridThumbnailHeight else SmallGridThumbnailHeight
-}
-
-@Composable
-fun rememberOfficialAlbumArt(item: YTItem): String? {
-    val database = LocalDatabase.current
-
-    val resolved by produceState<String?>(initialValue = null, item.id) {
-        if (item !is SongItem) return@produceState
-
-        // Step 1: Check local database first
-        val dbSong = database.song(item.id).firstOrNull()
-        if (dbSong?.song?.thumbnailUrl != null) {
-            value = dbSong.song.thumbnailUrl
-            return@produceState
-        }
-
-        // Step 2: If we have an album ID, fetch the full album data
-        val albumId = item.album?.id
-        if (albumId != null) {
-            val albumPage = YouTube.album(albumId, withSongs = false).getOrNull()
-            val officialThumbnail = albumPage?.album?.thumbnail
-            if (officialThumbnail != null) {
-                value = officialThumbnail
-                // Cache it for next time
-                dbSong?.let { song ->
-                    database.transaction {
-                        update(song.song.copy(thumbnailUrl = officialThumbnail))
-                    }
-                }
-            }
-        }
-    }
-
-    return resolved ?: item.thumbnail
 }
 
 @JvmName("ClickableArtistTextEntities")
@@ -1201,9 +1185,6 @@ fun YouTubeListItem(
             Icon.Favorite()
         }
         if (item.explicit) Icon.Explicit()
-        // if (item is SongItem && song?.song?.inLibrary != null) {
-        //     Icon.Library()
-        // }
         if (item is SongItem) {
             val download by LocalDownloadUtil.current.getDownload(item.id).collectAsStateWithLifecycle(null)
             Icon.Download(download?.state)
@@ -1273,7 +1254,6 @@ fun YouTubeGridItem(
             Icon.Favorite()
         }
         if (item.explicit) Icon.Explicit()
-        // if (item is SongItem && song?.song?.inLibrary != null) Icon.Library()
         if (item is SongItem) {
             val download by LocalDownloadUtil.current.getDownload(item.id).collectAsStateWithLifecycle(null)
             Icon.Download(download?.state)
@@ -1295,10 +1275,10 @@ fun YouTubeGridItem(
             modifier = Modifier.basicMarquee().fillMaxWidth()
         )
     },
-     subtitle = {
-         val subtitle = when (item) {
-             is SongItem -> joinByBullet(item.artists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, makeTimeString(item.duration?.times(1000L)))
-             is AlbumItem -> joinByBullet(item.artists?.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, item.year?.toString())
+    subtitle = {
+        val subtitle = when (item) {
+            is SongItem -> joinByBullet(item.artists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, makeTimeString(item.duration?.times(1000L)))
+            is AlbumItem -> joinByBullet(item.artists?.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, item.year?.toString())
             is ArtistItem -> null
             is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
             is PodcastItem -> joinByBullet(item.author?.name, item.episodeCountText)
@@ -1495,8 +1475,39 @@ fun ItemThumbnail(
     isSelected: Boolean = false,
     thumbnailRatio: Float = 1f
 ) {
-    val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
-    
+    var barZoom by remember(thumbnailUrl) { mutableFloatStateOf(1f) }
+    val finalUrl = thumbnailUrl
+        ?.resize(544, 544)
+        ?.replace("hqdefault", "mqdefault")
+        ?.replace("sddefault", "mqdefault")
+
+    LaunchedEffect(finalUrl) {
+        if (finalUrl == null || !finalUrl.contains("ytimg.com")) return@LaunchedEffect
+        try {
+            val bitmap = withContext(Dispatchers.IO) {
+                java.net.URL(finalUrl).openStream().use { stream ->
+                    android.graphics.BitmapFactory.decodeStream(stream)
+                }
+            } ?: return@LaunchedEffect
+            if (bitmap.width > 8 && bitmap.height > 8) {
+                val midX = bitmap.width / 2
+                val midY = bitmap.height / 2
+                fun dark(x: Int, y: Int): Boolean {
+                    val p = bitmap.getPixel(x, y)
+                    return (android.graphics.Color.red(p) +
+                            android.graphics.Color.green(p) +
+                            android.graphics.Color.blue(p)) / 3 < 40
+                }
+                barZoom = when {
+                    dark(1, midY) && dark(bitmap.width - 2, midY) -> 1.9f
+                    dark(midX, 1) && dark(midX, bitmap.height - 2) -> 1.45f
+                    else -> 1f
+                }
+            }
+        } catch (_: Exception) {
+        }
+    }
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = modifier
@@ -1507,15 +1518,19 @@ fun ItemThumbnail(
         if (albumIndex == null) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(thumbnailUrl?.resize(544, 544))
+                    .data(finalUrl)
                     .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .networkCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .build(),
                 contentDescription = null,
-                contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = barZoom
+                        scaleY = barZoom
+                    }
                     .clip(shape)
             )
         }
