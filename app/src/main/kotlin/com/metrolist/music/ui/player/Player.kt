@@ -976,11 +976,10 @@ fun BottomSheetPlayer(
                                 AsyncImage(
                                     model = mediaMetadata.thumbnailUrl,
                                     contentDescription = null,
-                                    contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
-                                    modifier =
-                                        Modifier
-                                            .size(56.dp)
-                                            .clip(RoundedCornerShape(ThumbnailCornerRadius)),
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(RoundedCornerShape(ThumbnailCornerRadius)),
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))

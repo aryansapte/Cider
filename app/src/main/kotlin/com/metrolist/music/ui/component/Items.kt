@@ -1476,16 +1476,37 @@ fun ItemThumbnail(
     thumbnailRatio: Float = 1f
 ) {
     var barZoom by remember(thumbnailUrl) { mutableFloatStateOf(1f) }
-    val finalUrl = thumbnailUrl
-        ?.resize(544, 544)
-        ?.replace("hqdefault", "mqdefault")
-        ?.replace("sddefault", "mqdefault")
+    var displayUrl by remember(thumbnailUrl) { mutableStateOf(thumbnailUrl) }
 
-    LaunchedEffect(finalUrl) {
-        if (finalUrl == null || !finalUrl.contains("ytimg.com")) return@LaunchedEffect
+    LaunchedEffect(thumbnailUrl) {
+        val base = thumbnailUrl?.resize(544, 544) ?: return@LaunchedEffect
+        if (!base.contains("ytimg.com")) {
+            displayUrl = base
+            return@LaunchedEffect
+        }
+        val hq = base
+            .replace("maxresdefault", "hqdefault")
+            .replace("sddefault", "hqdefault")
+            .replace("mqdefault", "hqdefault")
+        val maxres = hq.replace("hqdefault", "maxresdefault")
+
+        // Sharpest variant that actually exists (maxres 404s on non-HD videos)
+        var chosen = hq
+        try {
+            val conn = (java.net.URL(maxres).openConnection() as java.net.HttpURLConnection).apply {
+                requestMethod = "HEAD"
+                connectTimeout = 3000
+            }
+            conn.connect()
+            if (conn.responseCode == 200) chosen = maxres
+            conn.disconnect()
+        } catch (_: Exception) {
+        }
+        displayUrl = chosen
+
         try {
             val bitmap = withContext(Dispatchers.IO) {
-                java.net.URL(finalUrl).openStream().use { stream ->
+                java.net.URL(chosen).openStream().use { stream ->
                     android.graphics.BitmapFactory.decodeStream(stream)
                 }
             } ?: return@LaunchedEffect
@@ -1518,7 +1539,7 @@ fun ItemThumbnail(
         if (albumIndex == null) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(finalUrl)
+                    .data(displayUrl)
                     .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                     .networkCachePolicy(coil3.request.CachePolicy.ENABLED)
@@ -1696,7 +1717,7 @@ fun PlaylistThumbnail(
     size: Dp,
     placeHolder: @Composable () -> Unit,
     shape: Shape,
-    cacheKey: String? = null
+    cacheKey: String? = null,
 ) {
     val cropAlbumArt by rememberPreference(CropAlbumArtKey, false)
 
@@ -1712,14 +1733,13 @@ fun PlaylistThumbnail(
         }
         1 -> AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
-                .data(thumbnails[0].resize((size.value * 3).toInt()))
-                .apply { /* Removed cache key extensions due to unresolved in env */ }
+                .data(thumbnails[0])
                 .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .networkCachePolicy(coil3.request.CachePolicy.ENABLED)
                 .build(),
             contentDescription = null,
-            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+            contentScale = ContentScale.Crop,
             placeholder = painterResource(R.drawable.queue_music),
             error = painterResource(R.drawable.queue_music),
             modifier = Modifier
@@ -1739,8 +1759,7 @@ fun PlaylistThumbnail(
             ).fastForEachIndexed { index, alignment ->
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
-                        .data(thumbnails.getOrNull(index)?.resize((size.value * 1.5).toInt()))
-                        .apply { /* Removed cache key extensions due to unresolved in env */ }
+                        .data(thumbnails.getOrNull(index))
                         .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
                         .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
                         .networkCachePolicy(coil3.request.CachePolicy.ENABLED)

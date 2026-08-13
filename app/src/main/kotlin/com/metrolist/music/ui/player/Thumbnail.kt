@@ -86,6 +86,9 @@ import com.metrolist.music.ui.component.CastButton
 import com.metrolist.music.utils.rememberEnumPreference
 import com.metrolist.music.utils.rememberPreference
 import kotlinx.coroutines.delay
+import androidx.compose.runtime.mutableFloatStateOf
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Pre-calculated thumbnail dimensions to avoid repeated calculations during recomposition.
@@ -98,6 +101,11 @@ data class ThumbnailDimensions(
     val thumbnailSize: Dp,
     val cornerRadius: Dp
 )
+
+object PlayerThumbCache {
+    data class Entry(val url: String, val zoom: Float)
+    val map = mutableMapOf<String, Entry>()
+}
 
 /**
  * Cached media items data to prevent recalculation on every recomposition.
@@ -572,6 +580,7 @@ private fun ThumbnailItem(
 
                 ThumbnailImage(
                     artworkUri = artworkUriToUse,
+                    videoId = item.mediaId,
                     cropArtwork = cropAlbumArt
                 )
             }
@@ -615,29 +624,102 @@ private fun HiddenThumbnailPlaceholder(
 @Composable
 private fun ThumbnailImage(
     artworkUri: String?,
+    videoId: String?,
     cropArtwork: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val cacheKey = videoId ?: artworkUri ?: ""
+    var resolved by remember(cacheKey) {
+        mutableStateOf<PlayerThumbCache.Entry?>(PlayerThumbCache.map[cacheKey])
+    }
+
+    LaunchedEffect(cacheKey) {
+        if (cacheKey.isEmpty()) return@LaunchedEffect
+        PlayerThumbCache.map[cacheKey]?.let { resolved = it; return@LaunchedEffect }
+
+        val result = withContext(Dispatchers.IO) {
+            // Canonical high-res variants built from the video ID (11-char YouTube IDs only)
+            val candidates = if (videoId != null && videoId.length == 11) {
+                listOf(
+                    "https://i.ytimg.com/vi/$videoId/maxresdefault.jpg",
+                    "https://i.ytimg.com/vi/$videoId/sddefault.jpg",
+                    "https://i.ytimg.com/vi/$videoId/hqdefault.jpg",
+                )
+            } else {
+                listOfNotNull(artworkUri)
+            }
+
+            var chosen: String? = null
+            for (candidate in candidates) {
+                try {
+                    val conn = (java.net.URL(candidate).openConnection() as java.net.HttpURLConnection).apply {
+                        requestMethod = "HEAD"
+                        connectTimeout = 3000
+                        readTimeout = 3000
+                    }
+                    conn.connect()
+                    if (conn.responseCode == 200) chosen = candidate
+                    conn.disconnect()
+                    if (chosen != null) break
+                } catch (_: Exception) {
+                }
+            }
+            if (chosen == null) chosen = artworkUri
+            if (chosen == null) return@withContext null
+
+            var zoom = 1f
+            try {
+                val bitmap = java.net.URL(chosen).openStream().use { stream ->
+                    android.graphics.BitmapFactory.decodeStream(stream)
+                }
+                if (bitmap != null && bitmap.width > 8 && bitmap.height > 8) {
+                    val midX = bitmap.width / 2
+                    val midY = bitmap.height / 2
+                    fun dark(x: Int, y: Int): Boolean {
+                        val p = bitmap.getPixel(x, y)
+                        return (android.graphics.Color.red(p) +
+                                android.graphics.Color.green(p) +
+                                android.graphics.Color.blue(p)) / 3 < 40
+                    }
+                    zoom = when {
+                        dark(1, midY) && dark(bitmap.width - 2, midY) -> 1.9f
+                        dark(midX, 1) && dark(midX, bitmap.height - 2) -> 1.45f
+                        else -> 1f
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            PlayerThumbCache.Entry(chosen, zoom)
+        }
+
+        if (result != null) {
+            PlayerThumbCache.map[cacheKey] = result
+            resolved = result
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .graphicsLayer {
-                // Use offscreen compositing for hardware acceleration during animations
                 compositingStrategy = CompositingStrategy.Offscreen
             }
             .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(artworkUri)
-                .memoryCachePolicy(CachePolicy.ENABLED)
-                .diskCachePolicy(CachePolicy.ENABLED)
-                .networkCachePolicy(CachePolicy.ENABLED)
-                .build(),
-            contentDescription = null,
-            contentScale = if (cropArtwork) ContentScale.Crop else ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
-        )
+        val res = resolved
+        if (res != null) {
+            AsyncImage(
+                model = res.url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        scaleX = res.zoom
+                        scaleY = res.zoom
+                    }
+            )
+        }
     }
 }
 
