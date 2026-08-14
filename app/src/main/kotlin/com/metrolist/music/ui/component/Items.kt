@@ -409,7 +409,8 @@ fun ListItem(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.basicMarquee()
             )
         }
     },
@@ -441,7 +442,8 @@ fun ListItem(
                 color = MaterialTheme.colorScheme.secondary,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.basicMarquee()
             )
         }
     },
@@ -543,6 +545,7 @@ fun SongListItem(
     showInLibraryIcon: Boolean = false,
     showDownloadIcon: Boolean = true,
     subtitleOverride: String? = null,
+    showThumbnail: Boolean = true,
     badges: @Composable RowScope.() -> Unit = {
         if (showLikedIcon && song.song.liked) {
             Icon.Favorite()
@@ -582,27 +585,31 @@ fun SongListItem(
                           color = MaterialTheme.colorScheme.secondary,
                           maxLines = 1,
                           overflow = TextOverflow.Ellipsis,
+                          modifier = Modifier.basicMarquee(),
                       )
                   } else {
-                     Text(
-                         text = subtitleOverride,
-                         style = MaterialTheme.typography.bodySmall,
-                         color = MaterialTheme.colorScheme.secondary,
-                         maxLines = 1,
-                         overflow = TextOverflow.Ellipsis,
-                     )
+                      Text(
+                          text = subtitleOverride,
+                          style = MaterialTheme.typography.bodySmall,
+                          color = MaterialTheme.colorScheme.secondary,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis,
+                          modifier = Modifier.basicMarquee(),
+                      )
                  }
              },
              thumbnailContent = {
-                 ItemThumbnail(
-                     thumbnailUrl = song.song.thumbnailUrl?.resize(200, 200),
-                     albumIndex = albumIndex,
-                     isSelected = isSelected,
-                     isActive = isActive,
-                     isPlaying = isPlaying,
-                     shape = RoundedCornerShape(ThumbnailCornerRadius),
-                     modifier = Modifier.size(ListThumbnailSize)
-                 )
+                 if (showThumbnail) {
+                     ItemThumbnail(
+                         thumbnailUrl = song.song.thumbnailUrl?.resize(200, 200),
+                         albumIndex = albumIndex,
+                         isSelected = isSelected,
+                         isActive = isActive,
+                         isPlaying = isPlaying,
+                         shape = RoundedCornerShape(ThumbnailCornerRadius),
+                         modifier = Modifier.size(ListThumbnailSize)
+                     )
+                 }
              },
              trailingContent = trailingContent,
              modifier = modifier,
@@ -1855,7 +1862,7 @@ fun BoxScope.AlbumPlayButton(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(36.dp)
-                .clip(CircleShape)
+                .clip(RoundedCornerShape(8.dp))
                 .background(Color.Black.copy(alpha = ActiveBoxAlpha))
                 .clickable(onClick = onClick)
         ) {
