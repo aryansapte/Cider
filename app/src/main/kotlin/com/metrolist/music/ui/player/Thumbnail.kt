@@ -638,8 +638,10 @@ private fun ThumbnailImage(
         PlayerThumbCache.map[cacheKey]?.let { resolved = it; return@LaunchedEffect }
 
         val result = withContext(Dispatchers.IO) {
-            // Canonical high-res variants built from the video ID (11-char YouTube IDs only)
-            val candidates = if (videoId != null && videoId.length == 11) {
+            // Only "fix" artwork that is a YouTube video frame (songs played from YouTube
+            // playlists/search). Real album art is used exactly as provided.
+            val isVideoThumb = artworkUri?.contains("ytimg.com") == true
+            val candidates = if (isVideoThumb && videoId != null && videoId.length == 11) {
                 listOf(
                     "https://i.ytimg.com/vi/$videoId/maxresdefault.jpg",
                     "https://i.ytimg.com/vi/$videoId/sddefault.jpg",
@@ -668,26 +670,28 @@ private fun ThumbnailImage(
             if (chosen == null) return@withContext null
 
             var zoom = 1f
-            try {
-                val bitmap = java.net.URL(chosen).openStream().use { stream ->
-                    android.graphics.BitmapFactory.decodeStream(stream)
-                }
-                if (bitmap != null && bitmap.width > 8 && bitmap.height > 8) {
-                    val midX = bitmap.width / 2
-                    val midY = bitmap.height / 2
-                    fun dark(x: Int, y: Int): Boolean {
-                        val p = bitmap.getPixel(x, y)
-                        return (android.graphics.Color.red(p) +
-                                android.graphics.Color.green(p) +
-                                android.graphics.Color.blue(p)) / 3 < 40
+            if (chosen.contains("ytimg.com")) {
+                try {
+                    val bitmap = java.net.URL(chosen).openStream().use { stream ->
+                        android.graphics.BitmapFactory.decodeStream(stream)
                     }
-                    zoom = when {
-                        dark(1, midY) && dark(bitmap.width - 2, midY) -> 1.9f
-                        dark(midX, 1) && dark(midX, bitmap.height - 2) -> 1.45f
-                        else -> 1f
+                    if (bitmap != null && bitmap.width > 8 && bitmap.height > 8) {
+                        val midX = bitmap.width / 2
+                        val midY = bitmap.height / 2
+                        fun dark(x: Int, y: Int): Boolean {
+                            val p = bitmap.getPixel(x, y)
+                            return (android.graphics.Color.red(p) +
+                                    android.graphics.Color.green(p) +
+                                    android.graphics.Color.blue(p)) / 3 < 40
+                        }
+                        zoom = when {
+                            dark(1, midY) && dark(bitmap.width - 2, midY) -> 1.9f
+                            dark(midX, 1) && dark(midX, bitmap.height - 2) -> 1.45f
+                            else -> 1f
+                        }
                     }
+                } catch (_: Exception) {
                 }
-            } catch (_: Exception) {
             }
             PlayerThumbCache.Entry(chosen, zoom)
         }
@@ -711,7 +715,7 @@ private fun ThumbnailImage(
             AsyncImage(
                 model = res.url,
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = if (res.url.contains("ytimg.com") || cropArtwork) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
