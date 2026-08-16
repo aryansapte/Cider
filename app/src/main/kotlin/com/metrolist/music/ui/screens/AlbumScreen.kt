@@ -294,7 +294,7 @@ fun AlbumScreen(
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             textAlign = TextAlign.Start,
-                            maxLines = 2,
+                            maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.fillMaxWidth().alpha(scrollFade).padding(horizontal = 24.dp),
                         )
@@ -571,7 +571,12 @@ fun AlbumScreen(
                 }
             } else {
                 item(key = "loading") {
-                    Box(modifier = Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = Modifier
+                            .fillParentMaxSize()
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         ContainedLoadingIndicator()
                     }
                 }
@@ -594,14 +599,16 @@ fun AlbumScreen(
                     Text(pluralStringResource(R.plurals.n_selected, selection.size, selection.size))
                 } else {
                     Box(modifier = Modifier.fillMaxWidth().alpha(topBarFade), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = albumWithSongs?.album?.title.orEmpty(),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.basicMarquee(),
-                        )
+                        if (topBarFade > 0f) {
+                            Text(
+                                text = albumWithSongs?.album?.title.orEmpty(),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.basicMarquee(),
+                            )
+                        }
                     }
                 }
             },
