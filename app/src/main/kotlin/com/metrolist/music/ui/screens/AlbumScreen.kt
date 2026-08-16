@@ -432,7 +432,12 @@ fun AlbumScreen(
                                 onClick = {
                                     if (!isListenTogetherGuest) {
                                         playerConnection.service.getAutomix(playlistId)
-                                        playerConnection.playQueue(LocalAlbumRadio(albumWithSongs))
+                                        playerConnection.playQueue(
+                                            LocalAlbumRadio(
+                                                albumWithSongs,
+                                                startIndex = albumWithSongs.songs.indices.randomOrNull() ?: 0,
+                                            ),
+                                        )
                                         playerConnection.player.shuffleModeEnabled = true
                                     }
                                 },
