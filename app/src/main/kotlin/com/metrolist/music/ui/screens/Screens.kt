@@ -19,15 +19,15 @@ sealed class Screens(
 ) {
     object Home : Screens(
         titleId = R.string.home,
-        iconIdInactive = R.drawable.cider_home_filled,
-        iconIdActive = R.drawable.cider_home_filled,
+        iconIdInactive = R.drawable.home_outlined,
+        iconIdActive = R.drawable.home_filled,
         route = "home"
     )
 
     object Search : Screens(
         titleId = R.string.search,
-        iconIdInactive = R.drawable.grid_view,
-        iconIdActive = R.drawable.grid_view,
+        iconIdInactive = R.drawable.cloud,
+        iconIdActive = R.drawable.cloud,
         route = "search_input"
     )
 
