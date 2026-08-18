@@ -147,7 +147,6 @@ import com.metrolist.music.constants.LastSeenVersionKey
 import com.metrolist.music.constants.ListenTogetherInTopBarKey
 import com.metrolist.music.constants.ListenTogetherUsernameKey
 import com.metrolist.music.constants.LyricsProviderOrderKey
-import com.metrolist.music.constants.MiniPlayerBottomSpacing
 import com.metrolist.music.constants.MiniPlayerHeight
 import com.metrolist.music.constants.NavigationBarAnimationSpec
 import com.metrolist.music.constants.NavigationBarHeight
@@ -226,6 +225,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatDelegate
 import android.content.Context
 import android.content.res.Configuration
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 
 @Suppress("DEPRECATION", "ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
 @AndroidEntryPoint
@@ -708,6 +709,7 @@ class MainActivity : ComponentActivity() {
                 val bottomInsetDp = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 
                 val navController = rememberNavController()
+                val hazeState = remember { HazeState() }
 
                 LaunchedEffect(Unit) {
                     val lastSeenVersion = dataStore.data.first()[LastSeenVersionKey] ?: ""
@@ -813,15 +815,16 @@ class MainActivity : ComponentActivity() {
 
                 val showRail = (isLandscape || isTablet) && !inSearchScreen
 
+                val bottomBarHeight = if (slimNav) 56.dp else 62.dp
                 val navPadding =
                     if (shouldShowNavigationBar && !showRail) {
-                        if (slimNav) SlimNavBarHeight else NavigationBarHeight
+                        bottomBarHeight
                     } else {
                         0.dp
                     }
 
                 val navigationBarHeight by animateDpAsState(
-                    targetValue = if (shouldShowNavigationBar && !showRail) NavigationBarHeight else 0.dp,
+                    targetValue = if (shouldShowNavigationBar && !showRail) bottomBarHeight else 0.dp,
                     animationSpec = NavigationBarAnimationSpec,
                     label = "navBarHeight",
                 )
@@ -831,9 +834,8 @@ class MainActivity : ComponentActivity() {
                         dismissedBound = 0.dp,
                         collapsedBound =
                             bottomInset +
-                                (if (!showRail && shouldShowNavigationBar) navPadding else 0.dp) +
-                                (if (useNewMiniPlayerDesign) MiniPlayerBottomSpacing else 0.dp) +
-                                MiniPlayerHeight,
+                                    (if (!showRail && shouldShowNavigationBar) navPadding else 0.dp) +
+                                    MiniPlayerHeight,
                         expandedBound = maxHeight,
                     )
 
@@ -852,7 +854,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         var bottom = bottomInset
                         if (shouldShowNavigationBar && !showRail) {
-                            bottom += NavigationBarHeight
+                            bottom += bottomBarHeight
                         }
                         if (!playerBottomSheetState.isDismissed) bottom += MiniPlayerHeight
                         windowsInsets
@@ -1189,7 +1191,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                             // Pre-calculate values for graphicsLayer to avoid reading state during composition
-                            val navBarTotalHeight = bottomInset + NavigationBarHeight
+                            val navBarTotalHeight = bottomInset + bottomBarHeight
 
                             if (!showRail && currentRoute != "wrapped") {
                                 Box {
@@ -1205,7 +1207,7 @@ class MainActivity : ComponentActivity() {
                                         navigationItems = navigationItems,
                                         currentRoute = currentRoute,
                                         onItemClick = onNavItemClick,
-                                        pureBlack = pureBlack,
+
                                         slimNav = slimNav,
                                         onSearchLongClick = onSearchLongClick,
                                         onMicClick = onMicClick,
@@ -1227,7 +1229,7 @@ class MainActivity : ComponentActivity() {
                                                             val progress = playerBottomSheetState.progress.coerceIn(0f, 1f)
                                                             val slideOffset = totalHeightPx * progress
                                                             val hideOffset =
-                                                                totalHeightPx * (1 - navBarHeightPx / NavigationBarHeight.toPx())
+                                                                totalHeightPx * (1 - navBarHeightPx / bottomBarHeight.toPx())
                                                             slideOffset + hideOffset
                                                         }
                                                 },
@@ -1284,7 +1286,7 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .nestedScroll(topAppBarScrollBehavior.nestedScrollConnection),
                     ) {
-                        Row(Modifier.fillMaxSize()) {
+                        Row(Modifier.fillMaxSize().hazeSource(state = hazeState)) {
                             val onRailItemClick: (Screens, Boolean) -> Unit =
                                 remember(navController, coroutineScope, topAppBarScrollBehavior, playerBottomSheetState) {
                                     { screen: Screens, isSelected: Boolean ->

@@ -124,6 +124,9 @@ import kotlinx.coroutines.withContext
 import com.metrolist.music.ui.theme.PlayerColorExtractor
 import com.metrolist.music.ui.component.LocalMenuState
 import com.metrolist.music.ui.menu.AddToPlaylistDialog
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 
 /**
  * Stable wrapper for progress state - reads values only during draw phase
@@ -190,6 +193,7 @@ private fun NewMiniPlayer(
     )
     val context = LocalContext.current
     var gradientColors by remember { mutableStateOf<List<Color>>(emptyList()) }
+    var dominantColor by remember { mutableStateOf<Color?>(null) }
     val isSystemInDarkTheme = isSystemInDarkTheme()
     val darkTheme by rememberEnumPreference(DarkModeKey, defaultValue = DarkMode.AUTO)
     val useDarkTheme =
@@ -213,6 +217,10 @@ private fun NewMiniPlayer(
             }
         }
     val isCasting by castHandler?.isCasting?.collectAsStateWithLifecycle() ?: remember { mutableStateOf(false) }
+    val isPlaying by playerConnection.isPlaying.collectAsState()
+    val castIsPlaying by castHandler?.castIsPlaying?.collectAsState() ?: remember { mutableStateOf(false) }
+    val effectiveIsPlaying = if (isCasting) castIsPlaying else isPlaying
+    val isMuted by playerConnection.isMuted.collectAsStateWithLifecycle()
 
     // Swipe settings
     val swipeSensitivity by rememberPreference(SwipeSensitivityKey, 0.73f)
@@ -251,46 +259,48 @@ private fun NewMiniPlayer(
 
     LaunchedEffect(mediaMetadata?.id, miniPlayerBackground) {
         gradientColors = emptyList()
-        if (miniPlayerBackground == MiniPlayerBackgroundStyle.GRADIENT) {
-            val url = mediaMetadata?.thumbnailUrl
-            if (url != null) {
-                withContext(Dispatchers.IO) {
-                    val request = ImageRequest.Builder(context)
-                        .data(url)
-                        .size(100, 100)
-                        .allowHardware(false)
-                        .build()
-                    val result = runCatching { context.imageLoader.execute(request) }.getOrNull()
-                    val bitmap = result?.image?.toBitmap()
-                    if (bitmap != null) {
-                        val palette = withContext(Dispatchers.Default) {
-                            Palette.from(bitmap)
-                                .maximumColorCount(8)
-                                .resizeBitmapArea(100 * 100)
-                                .generate()
-                        }
-                        val extracted = PlayerColorExtractor.extractGradientColors(
-                            palette = palette,
-                            fallbackColor = 0xFF000000.toInt(),
-                        )
-                        withContext(Dispatchers.Main) {
-                            gradientColors = extracted
-                        }
-                    } else {
-                        withContext(Dispatchers.Main) {
-                            gradientColors = emptyList()
-                        }
-                    }
+        val url = mediaMetadata?.thumbnailUrl ?: return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            val request = ImageRequest.Builder(context)
+                .data(url)
+                .size(100, 100)
+                .allowHardware(false)
+                .build()
+            val result = runCatching { context.imageLoader.execute(request) }.getOrNull()
+            val bitmap = result?.image?.toBitmap() ?: return@withContext
+            val palette = withContext(Dispatchers.Default) {
+                Palette.from(bitmap)
+                    .maximumColorCount(8)
+                    .resizeBitmapArea(100 * 100)
+                    .generate()
+            }
+            // Spotify-style: prefer muted/dark swatches, then clamp saturation + lightness
+            val raw = (
+                    palette.darkMutedSwatch
+                        ?: palette.mutedSwatch
+                        ?: palette.darkVibrantSwatch
+                        ?: palette.dominantSwatch
+                    )?.rgb ?: 0xFF121212.toInt()
+            val hsl = FloatArray(3)
+            androidx.core.graphics.ColorUtils.colorToHSL(raw, hsl)
+            hsl[1] = (hsl[1] * 0.75f).coerceAtMost(0.55f) // desaturate
+            hsl[2] = hsl[2].coerceAtMost(0.30f)          // keep it dark
+            val dominant = Color(androidx.core.graphics.ColorUtils.HSLToColor(hsl))
+            withContext(Dispatchers.Main) {
+                dominantColor = dominant
+                if (miniPlayerBackground == MiniPlayerBackgroundStyle.GRADIENT) {
+                    gradientColors = PlayerColorExtractor.extractGradientColors(
+                        palette = palette,
+                        fallbackColor = 0xFF000000.toInt(),
+                    )
                 }
             }
-        } else {
-            gradientColors = emptyList()
         }
     }
 
     // Memoize colors
     val backgroundColor = when (miniPlayerBackground) {
-        MiniPlayerBackgroundStyle.DEFAULT    -> MaterialTheme.colorScheme.surfaceContainer
+        MiniPlayerBackgroundStyle.DEFAULT    -> dominantColor ?: MaterialTheme.colorScheme.surfaceContainer
         MiniPlayerBackgroundStyle.TRANSPARENT -> Color.Black.copy(alpha = 0.25f)
         MiniPlayerBackgroundStyle.BLUR       -> MaterialTheme.colorScheme.surfaceContainer
         MiniPlayerBackgroundStyle.GRADIENT   -> MaterialTheme.colorScheme.surfaceContainer
@@ -310,8 +320,9 @@ private fun NewMiniPlayer(
             modifier
                 .fillMaxWidth()
                 .height(MiniPlayerHeight)
+                .offset(y = 2.dp)
                 .windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Horizontal))
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 10.dp)
                 .let { baseModifier ->
                     if (swipeThumbnail) {
                         baseModifier.pointerInput(Unit) {
@@ -380,11 +391,10 @@ private fun NewMiniPlayer(
             modifier =
                 Modifier
                     .then(if (isTabletLandscape) Modifier.width(500.dp).align(Alignment.Center) else Modifier.fillMaxWidth())
-                    .height(64.dp)
+                    .fillMaxSize()
                     .offset { IntOffset(offsetXAnimatable.value.roundToInt(), 0) }
-                    .clip(RoundedCornerShape(32.dp))
+                    .clip(RoundedCornerShape(18.dp))
                     .background(color = backgroundColor)
-                    .border(1.dp, outlineColor.copy(alpha = 0.3f), RoundedCornerShape(32.dp))
                     .clickable(
                         interactionSource = interactionSource,
                         indication = LocalIndication.current,
@@ -430,45 +440,68 @@ private fun NewMiniPlayer(
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
             ) {
-                // Play button with progress - isolated composable
-                NewMiniPlayerPlayButton(
-                    progressState = progressState,
-                    playbackState = playbackState,
-                    isCasting = isCasting,
-                    castHandler = castHandler,
-                    playerConnection = playerConnection,
-                    mediaMetadata = mediaMetadata,
-                    primaryColor = primaryColor,
-                    outlineColor = outlineColor,
-                    listenTogetherManager = listenTogetherManager,
-                )
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                // Song info - isolated composable
-                NewMiniPlayerSongInfo(
-                    mediaMetadata = mediaMetadata,
-                    onSurfaceColor = onSurfaceColor,
-                    errorColor = errorColor,
-                    modifier = Modifier.weight(1f),
-                )
+                // Square rounded thumbnail
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onClick() },
+                ) {
+                    mediaMetadata?.let { metadata ->
+                        AsyncImage(
+                            model = remember(metadata.thumbnailUrl) { metadata.thumbnailUrl?.resize(144, 144) },
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Cast indicator
-                if (isCasting) {
-                    Icon(
-                        painter = painterResource(R.drawable.cast_connected),
-                        contentDescription = "Casting",
-                        tint = primaryColor,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
+                // Title • Artist on one line (+ cast line)
+                Column(modifier = Modifier.weight(1f)) {
+                    mediaMetadata?.let { metadata ->
+                        Text(
+                            text = metadata.title,
+                            color = onSurfaceColor,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
+                        )
+                        metadata.artists.firstOrNull { it.name.isNotBlank() }?.let { artist ->
+                            Text(
+                                text = artist.name,
+                                color = onSurfaceColor.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.basicMarquee(iterations = 1, initialDelayMillis = 3000, velocity = 30.dp),
+                            )
+                        }
+                        if (isCasting) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    painter = painterResource(R.drawable.cast_connected),
+                                    contentDescription = null,
+                                    tint = primaryColor,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Text(text = "Casting", color = primaryColor, fontSize = 12.sp, maxLines = 1)
+                            }
+                        }
+                    }
                 }
 
-// Subscribe button - isolated composable
+                Spacer(modifier = Modifier.width(4.dp))
+
                 mediaMetadata?.artists?.firstOrNull()?.id?.let { artistId ->
                     SubscribeButton(
                         artistId = artistId,
@@ -479,9 +512,6 @@ private fun NewMiniPlayer(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
-
-// Add to playlist button - isolated composable
                 mediaMetadata?.let { metadata ->
                     AddToPlaylistButton(
                         onClick = {
@@ -498,17 +528,49 @@ private fun NewMiniPlayer(
                     )
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
 
-// Favorite button - isolated composable
-                mediaMetadata?.let { FavoriteButton(
-                    songId = it.id,
-                    errorColor = errorColor,
-                    outlineColor = outlineColor,
-                    onSurfaceColor = onSurfaceColor,
-                )
+                // Flat play/pause at the far right (reference style)
+                IconButton(
+                    onClick = {
+                        if (isListenTogetherGuest) {
+                            playerConnection.toggleMute()
+                        } else if (isCasting) {
+                            if (castIsPlaying) castHandler?.pause() else castHandler?.play()
+                        } else if (playbackState == Player.STATE_ENDED) {
+                            playerConnection.player.seekTo(0, 0)
+                            playerConnection.player.playWhenReady = true
+                        } else {
+                            playerConnection.togglePlayPause()
+                        }
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(
+                            when {
+                                isListenTogetherGuest -> if (isMuted) R.drawable.volume_off else R.drawable.volume_up
+                                playbackState == Player.STATE_ENDED -> R.drawable.replay
+                                effectiveIsPlaying -> R.drawable.pause
+                                else -> R.drawable.play
+                            },
+                        ),
+                        contentDescription = null,
+                        tint = onSurfaceColor,
+                        modifier = Modifier.size(24.dp),
+                    )
                 }
             }
+
+            // Progress line inside the bar, at the bottom
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .drawWithContent {
+                        drawRect(Color.White.copy(alpha = 0.25f))
+                        drawRect(Color.White, size = Size(size.width * progressState.progress, size.height))
+                    },
+            )
         }
     }
 }
@@ -1068,15 +1130,7 @@ private fun SubscribeButton(
         modifier =
             Modifier
                 .size(40.dp)
-                .clip(CircleShape)
-                .border(
-                    width = 1.dp,
-                    color = if (isSubscribed) primaryColor.copy(alpha = 0.5f) else outlineColor.copy(alpha = 0.3f),
-                    shape = CircleShape,
-                ).background(
-                    color = if (isSubscribed) primaryColor.copy(alpha = 0.1f) else Color.Transparent,
-                    shape = CircleShape,
-                ).clickable {
+                .clickable {
                     database.transaction {
                         val artist = libraryArtist?.artist
                         if (artist != null) {
@@ -1119,23 +1173,13 @@ private fun AddToPlaylistButton(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .size(40.dp)
-            .clip(CircleShape)
-            .border(
-                width = 1.dp,
-                color = outlineColor.copy(alpha = 0.3f),
-                shape = CircleShape,
-            )
-            .background(
-                color = Color.Transparent,
-                shape = CircleShape,
-            )
             .clickable { onClick() },
     ) {
         Icon(
             painter = painterResource(R.drawable.add),
             contentDescription = contentDescription,
-            tint = onSurfaceColor.copy(alpha = 0.7f),
-            modifier = Modifier.size(20.dp),
+            tint = onSurfaceColor.copy(alpha = 0.8f),
+            modifier = Modifier.size(24.dp),
         )
     }
 }
