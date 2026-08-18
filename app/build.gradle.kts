@@ -357,6 +357,9 @@ dependencies {
     implementation(libs.viewmodel.compose)
     implementation(libs.lifecycle.process)
 
+    implementation(libs.haze)
+    implementation(libs.haze.materials) // optional: prebuilt iOS/Material blur presets
+
     implementation(libs.material3)
     implementation(libs.palette)
     implementation(libs.materialKolor)
