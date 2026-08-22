@@ -213,6 +213,11 @@ fun NavGraphBuilder.navigationBuilder(
         ArtistScreen(navController)
     }
 
+    // New PlaylistAdd Screen
+    composable("add_to_playlist") {
+        AddToPlaylistScreen(navController = navController)
+    }
+
     // 1. THE ORIGINAL SONGS PAGE (Restored)
     composable(
         route = "artist/{artistId}/songs",
