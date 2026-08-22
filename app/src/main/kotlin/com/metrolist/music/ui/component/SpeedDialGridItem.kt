@@ -1,33 +1,48 @@
+/**
+ * Metrolist Project (C) 2026
+ * Licensed under GPL-3.0 | See git history for contributors
+ */
+
 package com.metrolist.music.ui.component
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.metrolist.innertube.models.ArtistItem
-import com.metrolist.innertube.models.SongItem
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import com.metrolist.innertube.models.YTItem
 import com.metrolist.music.R
-import com.metrolist.music.constants.ThumbnailCornerRadius
 import com.metrolist.music.ui.utils.resize
 
 @Composable
@@ -38,78 +53,100 @@ fun SpeedDialGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
 ) {
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1f) // Square aspect ratio
-            .clip(RoundedCornerShape(ThumbnailCornerRadius))
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainer),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Thumbnail
-        ItemThumbnail(
-            thumbnailUrl = item.thumbnail?.resize(200, 200),
-            isActive = isActive,
-            isPlaying = isPlaying,
-            shape = if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius),
-            modifier = Modifier.fillMaxSize()
-        )
-
-        // Gradient Overlay for Text Readability and Icon Contrast
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Black.copy(alpha = 0.4f), // Top scrim for icon visibility on bright covers
-                            Color.Transparent,
-                            Color.Black.copy(alpha = 0.6f),
-                            Color.Black.copy(alpha = 0.9f)
-                        )
-                    )
-                )
-        )
-
-        // Title and Chevron
-        Row(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(8.dp) // Reduced padding for tighter layout
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleSmall, // Smaller, punchier font
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+        // Thumbnail + now-playing overlay
+        Box(modifier = Modifier.size(56.dp)) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(item.thumbnail?.resize(200, 200))
+                    .size(200, 200)
+                    .crossfade(false)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
             )
-            
-            // Navigation Chevron for browsable items (Album, Playlist, Artist)
-            if (item !is SongItem) {
-                Icon(
-                    painter = painterResource(R.drawable.navigate_next),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
+
+            if (isActive) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    EqualizerBars(
+                        color = Color.White,
+                        animate = isPlaying,
+                    )
+                }
+            }
         }
-    }
-        // Pinned Icon
+
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp)
+                .basicMarquee(),
+        )
+
         if (isPinned) {
             Icon(
                 painter = painterResource(R.drawable.ic_push_pin),
                 contentDescription = null,
-                tint = Color.White,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .size(16.dp)
+                    .padding(end = 10.dp)
+                    .size(14.dp),
             )
         }
+    }
+}
 
-
+@Composable
+private fun EqualizerBars(
+    color: Color,
+    animate: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val infinite = rememberInfiniteTransition(label = "equalizer")
+    Row(
+        modifier = modifier.height(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        listOf(0, 1, 2).forEach { i ->
+            val fraction by infinite.animateFloat(
+                initialValue = 0.3f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween<Float>(
+                        durationMillis = 550 + i * 150,
+                        easing = LinearEasing,
+                    ),
+                    repeatMode = RepeatMode.Reverse,
+                ),
+                label = "bar$i",
+            )
+            val h = if (animate) fraction else 0.5f
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height((14 * h).dp)
+                    .clip(RoundedCornerShape(1.5.dp))
+                    .background(color),
+            )
+        }
     }
 }
