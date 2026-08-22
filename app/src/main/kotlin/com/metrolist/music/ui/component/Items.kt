@@ -1296,6 +1296,7 @@ fun YouTubeGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    compactSubtitle: Boolean = false,
 ) = GridItem(
     title = {
         Text(
@@ -1309,22 +1310,33 @@ fun YouTubeGridItem(
         )
     },
     subtitle = {
-        val subtitle = when (item) {
-            is SongItem -> joinByBullet(item.artists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, makeTimeString(item.duration?.times(1000L)))
-            is AlbumItem -> joinByBullet(item.artists?.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, item.year?.toString())
-            is ArtistItem -> null
-            is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
-            is PodcastItem -> joinByBullet(item.author?.name, item.episodeCountText)
-            is EpisodeItem -> joinByBullet(item.author?.name, makeTimeString(item.duration?.times(1000L)))
-        }
-        if (subtitle != null) {
+        if (compactSubtitle && item is AlbumItem) {
             Text(
-                text = subtitle,
+                text = item.artists?.firstOrNull()?.name ?: "",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(),
             )
+        } else {
+            val subtitle = when (item) {
+                is SongItem -> joinByBullet(item.artists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, makeTimeString(item.duration?.times(1000L)))
+                is AlbumItem -> joinByBullet(item.artists?.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name }, item.year?.toString())
+                is ArtistItem -> null
+                is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
+                is PodcastItem -> joinByBullet(item.author?.name, item.episodeCountText)
+                is EpisodeItem -> joinByBullet(item.author?.name, makeTimeString(item.duration?.times(1000L)))
+            }
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     },
     badges = badges,

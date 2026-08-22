@@ -649,6 +649,7 @@ fun HomeScreen(
     val quickPicks by viewModel.quickPicks.collectAsStateWithLifecycle()
     val forgottenFavorites by viewModel.forgottenFavorites.collectAsStateWithLifecycle()
     val keepListening by viewModel.keepListening.collectAsStateWithLifecycle()
+    val newReleasesForYou by viewModel.newReleasesForYou.collectAsStateWithLifecycle()
     val similarRecommendations by viewModel.similarRecommendations.collectAsStateWithLifecycle()
     val accountPlaylists by viewModel.accountPlaylists.collectAsStateWithLifecycle()
     val homePage by viewModel.homePage.collectAsStateWithLifecycle()
@@ -931,9 +932,11 @@ fun HomeScreen(
         }
     }
 
-    val ytGridItem: @Composable (YTItem) -> Unit = { item ->
+    @Composable
+    fun ytGridItem(item: YTItem, compactSubtitle: Boolean = false) {
         YouTubeGridItem(
             item = item,
+            compactSubtitle = compactSubtitle,
             isActive = item.id in listOf(mediaMetadata?.album?.id, mediaMetadata?.id),
             isPlaying = isPlaying,
             coroutineScope = scope,
@@ -1828,6 +1831,26 @@ fun HomeScreen(
                                             key = { "home_keep_listening_${it.id}" },
                                         ) {
                                             localGridItem(it)
+                                        }
+                                    }
+                                }
+
+                                if (newReleasesForYou.isNotEmpty()) {
+                                    item(key = "new_releases_title") {
+                                        NavigationTitle(
+                                            title = "New Releases For You",
+                                        )
+                                    }
+                                    item(key = "new_releases_list") {
+                                        LazyRow(
+                                            contentPadding =
+                                                WindowInsets.systemBars
+                                                    .only(WindowInsetsSides.Horizontal)
+                                                    .asPaddingValues(),
+                                        ) {
+                                            items(newReleasesForYou, key = { "home_new_release_${it.id}" }) { album ->
+                                                ytGridItem(album, compactSubtitle = true)
+                                            }
                                         }
                                     }
                                 }

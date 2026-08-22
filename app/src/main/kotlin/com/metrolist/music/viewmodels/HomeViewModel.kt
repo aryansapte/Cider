@@ -65,6 +65,7 @@ import java.time.LocalDateTime
 import javax.inject.Inject
 import kotlin.random.Random
 
+
 data class DailyDiscoverItem(
     val seed: Song,
     val recommendation: YTItem,
@@ -100,6 +101,7 @@ class HomeViewModel @Inject constructor(
     val accountPlaylists = MutableStateFlow<List<PlaylistItem>?>(null)
     val homePage = MutableStateFlow<HomePage?>(null)
     val explorePage = MutableStateFlow<ExplorePage?>(null)
+    val newReleasesForYou = MutableStateFlow<List<AlbumItem>>(emptyList())
     val communityPlaylists = MutableStateFlow<List<CommunityPlaylistItem>?>(null)
     val selectedChip = MutableStateFlow<HomePage.Chip?>(null)
     private val previousHomePage = MutableStateFlow<HomePage?>(null)
@@ -519,6 +521,40 @@ class HomeViewModel @Inject constructor(
                     moodAndGenres = page.moodAndGenres.filterOutNulls()
                 )
             }.onFailure { reportException(it) }
+        }
+
+        // "New Releases For You": every album/EP/single your followed artists released this year
+        viewModelScope.launch(Dispatchers.IO) {
+            val followed = database.getFollowedArtists().first()
+            if (followed.isEmpty()) return@launch
+            val currentYear = LocalDateTime.now().year
+            val releases = java.util.Collections.synchronizedList(mutableListOf<AlbumItem>())
+            coroutineScope {
+                followed.shuffled().take(25).map { artist ->
+                    launch {
+                        YouTube.artist(artist.id).onSuccess { page ->
+                            page.sections.forEach { section ->
+                                section.items.filterIsInstance<AlbumItem>().forEach { album ->
+                                    if ((album.year ?: 0) >= currentYear) {
+                                        releases.add(
+                                            if (album.artists.isNullOrEmpty()) {
+                                                album.copy(artists = listOf(Artist(name = artist.name, id = artist.id)))
+                                            } else {
+                                                album
+                                            },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.forEach { it.join() }
+            }
+            newReleasesForYou.value = releases
+                .filterExplicit(hideExplicit)
+                .distinctBy { it.id }
+                .shuffled()
+                .take(9)
         }
 
         viewModelScope.launch(Dispatchers.IO) {

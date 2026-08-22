@@ -1059,6 +1059,9 @@ interface DatabaseDao {
     @Query("SELECT * FROM album WHERE id = :id")
     fun album(id: String): Flow<Album?>
 
+    @Query("SELECT * FROM artist WHERE bookmarkedAt IS NOT NULL")
+    fun getFollowedArtists(): Flow<List<ArtistEntity>>
+
     @Transaction
     @Query("SELECT * FROM album WHERE id = :albumId")
     fun albumWithSongs(albumId: String): Flow<AlbumWithSongs?>
