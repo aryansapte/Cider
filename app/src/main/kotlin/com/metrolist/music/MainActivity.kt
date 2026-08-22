@@ -795,6 +795,8 @@ class MainActivity : ComponentActivity() {
                     derivedStateOf { navBackStackEntry?.destination?.route }
                 }
 
+                val hideMiniPlayer = currentRoute == "add_to_playlist"
+
                 val inSearchScreen by remember {
                     derivedStateOf { currentRoute?.startsWith("search/") == true }
                 }
@@ -915,9 +917,9 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                LaunchedEffect(activePlayerConnection) {
+                LaunchedEffect(activePlayerConnection, hideMiniPlayer) {
                     val player = runCatching { activePlayerConnection?.player }.getOrNull()
-                    if (player?.currentMediaItem == null) {
+                    if (player?.currentMediaItem == null || hideMiniPlayer) {
                         if (!playerBottomSheetState.isDismissed) {
                             playerBottomSheetState.dismiss()
                         }
@@ -1043,35 +1045,8 @@ class MainActivity : ComponentActivity() {
                             ) {
                                 Row {
                                     TopAppBar(
-                                        title = {
-                                            Text(
-                                                text = currentTitleRes?.let { stringResource(it) } ?: "",
-                                                style = MaterialTheme.typography.titleLarge,
-                                            )
-                                        },
-                                        actions = {
-                                            if (showHistoryButton) {
-                                                IconButton(onClick = { navController.navigate("history") }) {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.history),
-                                                        contentDescription = stringResource(R.string.history),
-                                                    )
-                                                }
-                                            }
-                                            IconButton(onClick = { navController.navigate("stats") }) {
-                                                Icon(
-                                                    painter = painterResource(R.drawable.stats),
-                                                    contentDescription = stringResource(R.string.stats),
-                                                )
-                                            }
-                                            if (listenTogetherInTopBar) {
-                                                IconButton(onClick = { navController.navigate("listen_together_from_topbar") }) {
-                                                    Icon(
-                                                        painter = painterResource(R.drawable.group_outlined),
-                                                        contentDescription = stringResource(R.string.together),
-                                                    )
-                                                }
-                                            }
+                                        title = { },
+                                        navigationIcon = {
                                             IconButton(onClick = { showAccountDialog = true }) {
                                                 BadgedBox(badge = {
                                                     if (latestVersionName != BuildConfig.VERSION_NAME) {
@@ -1097,11 +1072,35 @@ class MainActivity : ComponentActivity() {
                                                 }
                                             }
                                         },
-                                        scrollBehavior = topAppBarScrollBehavior,
+                                        actions = {
+                                            if (showHistoryButton) {
+                                                IconButton(onClick = { navController.navigate("history") }) {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.history),
+                                                        contentDescription = stringResource(R.string.history),
+                                                    )
+                                                }
+                                            }
+                                            IconButton(onClick = { navController.navigate("stats") }) {
+                                                Icon(
+                                                    painter = painterResource(R.drawable.stats),
+                                                    contentDescription = stringResource(R.string.stats),
+                                                )
+                                            }
+                                            if (listenTogetherInTopBar) {
+                                                IconButton(onClick = { navController.navigate("listen_together_from_topbar") }) {
+                                                    Icon(
+                                                        painter = painterResource(R.drawable.group_outlined),
+                                                        contentDescription = stringResource(R.string.together),
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(),
                                         colors =
                                             TopAppBarDefaults.topAppBarColors(
-                                                containerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
-                                                scrolledContainerColor = if (pureBlack) Color.Black else MaterialTheme.colorScheme.surfaceContainer,
+                                                containerColor = Color.Black,
+                                                scrolledContainerColor = Color.Black,
                                                 titleContentColor = MaterialTheme.colorScheme.onSurface,
                                                 actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
