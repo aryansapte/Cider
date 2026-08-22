@@ -127,6 +127,8 @@ import com.metrolist.music.ui.menu.AddToPlaylistDialog
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
+import androidx.navigation.NavController
+import com.metrolist.music.ui.screens.AddToPlaylistCache
 
 /**
  * Stable wrapper for progress state - reads values only during draw phase
@@ -146,6 +148,7 @@ class ProgressState(
 
 @Composable
 fun MiniPlayer(
+    navController: NavController,
     positionState: MutableLongState,
     durationState: MutableLongState,
     modifier: Modifier = Modifier,
@@ -158,6 +161,7 @@ fun MiniPlayer(
 
     if (useNewMiniPlayerDesign) {
         NewMiniPlayer(
+            navController = navController,
             progressState = progressState,
             modifier = modifier,
             onClick = onClick,
@@ -179,6 +183,7 @@ fun MiniPlayer(
 
 @Composable
 private fun NewMiniPlayer(
+    navController: NavController,
     progressState: ProgressState,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
@@ -515,13 +520,9 @@ private fun NewMiniPlayer(
                 mediaMetadata?.let { metadata ->
                     AddToPlaylistButton(
                         onClick = {
-                            menuState.show {
-                                AddToPlaylistDialog(
-                                    isVisible = true,
-                                    onGetSong = { listOf(metadata.id) },
-                                    onDismiss = menuState::dismiss,
-                                )
-                            }
+                            AddToPlaylistCache.pendingSongIds = listOf(metadata.id)
+                            AddToPlaylistCache.pendingSongTitle = metadata.title
+                            navController.navigate("add_to_playlist")
                         },
                         outlineColor = outlineColor,
                         onSurfaceColor = onSurfaceColor,
