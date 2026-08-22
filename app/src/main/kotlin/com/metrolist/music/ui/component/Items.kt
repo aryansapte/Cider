@@ -652,6 +652,7 @@ fun SongGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    compactSubtitle: Boolean = false,
 ) = GridItem(
     title = {
         Text(
@@ -664,16 +665,27 @@ fun SongGridItem(
         )
     },
     subtitle = {
-        Text(
-            text = joinByBullet(
-                song.orderedArtists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name },
-                makeTimeString(song.song.duration * 1000L)
-            ),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (compactSubtitle) {
+            Text(
+                text = song.orderedArtists.firstOrNull()?.name ?: "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(),
+            )
+        } else {
+            Text(
+                text = joinByBullet(
+                    song.orderedArtists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name },
+                    makeTimeString(song.song.duration * 1000L)
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     },
     badges = badges,
     thumbnailContent = {
@@ -737,6 +749,7 @@ fun ArtistListItem(
 @Composable
 fun ArtistGridItem(
     artist: Artist,
+    squareThumbnail: Boolean = false,
     modifier: Modifier = Modifier,
     badges: @Composable RowScope.() -> Unit = {
         if (artist.artist.bookmarkedAt != null) {
@@ -760,7 +773,7 @@ fun ArtistGridItem(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .clip(CircleShape)
+                .clip(if (squareThumbnail) RoundedCornerShape(ThumbnailCornerRadius) else CircleShape)
         )
     },
     fillMaxWidth = fillMaxWidth,
@@ -880,6 +893,8 @@ fun AlbumGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     fillMaxWidth: Boolean = false,
+    squareThumbnail: Boolean = false,
+    compactSubtitle: Boolean = false,
 ) = GridItem(
     title = {
         Text(
@@ -891,14 +906,25 @@ fun AlbumGridItem(
             modifier = Modifier.basicMarquee().fillMaxWidth()
         )
     },
-     subtitle = {
-         Text(
-             text = album.artists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name },
-             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+    subtitle = {
+        if (compactSubtitle) {
+            Text(
+                text = album.artists.firstOrNull()?.name ?: "",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(),
+            )
+        } else {
+            Text(
+                text = album.artists.joinToArtistString(" ${stringResource(R.string.and)} ") { it.name },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     },
     badges = badges,
     thumbnailContent = {
@@ -1799,7 +1825,7 @@ fun BoxScope.OverlayPlayButton(
             contentAlignment = Alignment.Center,
             modifier = Modifier
                 .size(36.dp)
-                .clip(CircleShape)
+                .clip(RoundedCornerShape(8.dp))
                 .background(Color.Black.copy(alpha = ActiveBoxAlpha))
         ) {
             Icon(
