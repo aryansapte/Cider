@@ -928,8 +928,10 @@ fun BottomSheetPlayer(
             },
         collapsedContent = {
             MiniPlayer(
+                navController = navController,
                 positionState = positionState,
                 durationState = durationState,
+                modifier = Modifier,
                 onClick = { state.expandSoft() },
             )
         },
